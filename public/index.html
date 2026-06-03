@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>QQP Duplicate Detection</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">QQP</span>
+          <div>
+            <h1>Question Match</h1>
+            <p id="serverState">Loading</p>
+          </div>
+        </div>
+
+        <nav class="nav-actions" aria-label="Workspace">
+          <button class="nav-button active" id="newBtn" type="button">
+            <span>+</span>
+            New check
+          </button>
+          <button class="nav-button" id="historyBtn" type="button">
+            <span>H</span>
+            History
+          </button>
+        </nav>
+
+        <div class="history-panel">
+          <div class="history-head">
+            <h2>Recent</h2>
+            <button class="text-button" id="clearHistoryBtn" type="button">Clear</button>
+          </div>
+          <div id="historyList" class="history-list">No saved checks yet.</div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="compare-view" id="compareView">
+          <div class="main-head">
+            <p class="eyebrow">Semantic duplicate check</p>
+            <h2>Compare two questions</h2>
+          </div>
+
+          <div class="comparison-workspace">
+            <form class="comparison-form" id="compareForm">
+              <div class="field-stack">
+                <label for="question1">First question</label>
+                <textarea id="question1" rows="5" placeholder="How can I learn Python?"></textarea>
+              </div>
+
+              <div class="field-stack">
+                <label for="question2">Second question</label>
+                <textarea id="question2" rows="5" placeholder="What is the best way to learn Python?"></textarea>
+              </div>
+
+              <div class="form-controls">
+                <label class="model-field" for="modelSelect">
+                  <span>Model</span>
+                  <select id="modelSelect"></select>
+                </label>
+                <div class="button-row">
+                  <button id="analyzeBtn" type="submit">Run check</button>
+                  <button class="secondary" id="swapBtn" type="button">Swap</button>
+                  <button class="secondary" id="clearBtn" type="button">Clear</button>
+                </div>
+              </div>
+            </form>
+
+            <aside class="result-card idle" id="resultCard">
+              <p class="result-label">Result</p>
+              <div class="verdict" id="verdictBadge">Ready</div>
+              <div class="score-row">
+                <span id="scoreValue">--</span>
+                <span id="scoreMeta">No score yet</span>
+              </div>
+              <div class="meter"><span id="scoreMeter"></span></div>
+              <p class="message" id="message">Enter both fields, then run the check.</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="history-view" id="historyView" hidden>
+          <div class="main-head">
+            <p class="eyebrow">Previous checks</p>
+            <h2>History</h2>
+          </div>
+          <div class="history-results" id="historyResults">No saved checks yet.</div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
