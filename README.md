@@ -101,3 +101,4 @@ project works without external downloads. The first Sentence-BERT prediction may
 take longer because the MiniLM model has to load into memory. If the model is
 not already cached locally, the `sentence-transformers` library may need network
 access to download it.
+# NLP-STS-DuplicateDetection

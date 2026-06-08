@@ -27,7 +27,7 @@ function escapeHtml(value) {
 
 function setBusy(isBusy) {
   el("analyzeBtn").disabled = isBusy;
-  el("analyzeBtn").textContent = isBusy ? "Checking" : "Run check";
+  el("analyzeBtn").textContent = isBusy ? "Checking..." : "Run check";
 }
 
 function fillModels(models) {
@@ -36,17 +36,22 @@ function fillModels(models) {
   Object.entries(models).forEach(([key, label]) => {
     el("modelSelect").add(new Option(label, key));
   });
-  el("modelSelect").value = "model2";
+  el("modelSelect").value = "model5"; // Default to recommended Ensemble model
 }
 
 function setView(view) {
-  const isHistory = view === "history";
-  el("compareView").hidden = isHistory;
-  el("historyView").hidden = !isHistory;
-  el("newBtn").classList.toggle("active", !isHistory);
-  el("historyBtn").classList.toggle("active", isHistory);
-  if (isHistory) {
+  el("compareView").hidden = view !== "compare";
+  el("historyView").hidden = view !== "history";
+  el("metricsView").hidden = view !== "metrics";
+  
+  el("newBtn").classList.toggle("active", view === "compare");
+  el("historyBtn").classList.toggle("active", view === "history");
+  el("metricsBtn").classList.toggle("active", view === "metrics");
+  
+  if (view === "history") {
     renderHistoryResults();
+  } else if (view === "metrics") {
+    loadMetrics();
   }
 }
 
@@ -65,6 +70,9 @@ function resetResult() {
   el("scoreMeta").textContent = "No score yet";
   el("scoreMeter").style.width = "0%";
   el("message").textContent = "Enter both fields, then run the check.";
+  
+  el("comparisonPanelSection").hidden = true;
+  el("comparisonGrid").innerHTML = "";
 }
 
 function renderResult(result) {
@@ -73,11 +81,45 @@ function renderResult(result) {
   el("resultCard").className = `result-card ${labelClass}`;
   el("verdictBadge").textContent = result.verdict;
   el("scoreValue").textContent = formatScore(score);
-  el("scoreMeta").textContent = `${result.model} - ${score >= 0.5 ? "+" : ""}${formatScore(score - 0.5)} from threshold`;
+  
+  const diffStr = score >= result.threshold ? "+" : "";
+  el("scoreMeta").textContent = `${result.model} - ${diffStr}${formatScore(score - result.threshold)} from threshold (${formatScore(result.threshold)})`;
   el("scoreMeter").style.width = `${Math.max(0, Math.min(100, score * 100))}%`;
+  
   el("message").textContent = result.label === 1
     ? "These questions are likely duplicates."
     : "These questions are likely not duplicates.";
+}
+
+function renderComparison(comparison) {
+  if (!comparison || comparison.length === 0) {
+    el("comparisonPanelSection").hidden = true;
+    return;
+  }
+  
+  el("comparisonPanelSection").hidden = false;
+  el("comparisonGrid").innerHTML = comparison.map(item => {
+    const isRecommended = item.model_key === 'model5';
+    const labelClass = item.label === 1 ? 'duplicate' : 'not-duplicate';
+    const recommendedClass = isRecommended ? 'recommended' : '';
+    const scorePct = Math.max(0, Math.min(100, item.score * 100));
+    
+    return `
+      <div class="comp-card ${labelClass} ${recommendedClass}">
+        <div>
+          <div class="comp-model-name">${escapeHtml(item.model)} ${isRecommended ? '★' : ''}</div>
+          <div class="comp-verdict">${escapeHtml(item.verdict)}</div>
+        </div>
+        <div>
+          <div class="comp-score-row">
+            <span>Confidence</span>
+            <span class="comp-score">${formatScore(item.score)}</span>
+          </div>
+          <div class="comp-meter"><span style="width: ${scorePct}%"></span></div>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
 function saveHistory(result, question1, question2) {
@@ -101,12 +143,15 @@ function renderSidebarHistory() {
     return;
   }
 
-  el("historyList").innerHTML = state.history.slice(0, 4).map((item) => `
-    <button class="history-item" type="button" data-history-id="${item.id}">
-      <strong>${escapeHtml(item.verdict)} - ${formatScore(item.score)}</strong>
-      <span>${escapeHtml(item.question1)}</span>
-    </button>
-  `).join("");
+  el("historyList").innerHTML = state.history.slice(0, 4).map((item) => {
+    const labelClass = item.label === 1 ? "duplicate" : "not-duplicate";
+    return `
+      <button class="history-item ${labelClass}" type="button" data-history-id="${item.id}">
+        <strong>${escapeHtml(item.verdict)} - ${formatScore(item.score)}</strong>
+        <span>${escapeHtml(item.question1)}</span>
+      </button>
+    `;
+  }).join("");
 }
 
 function renderHistoryResults() {
@@ -122,16 +167,16 @@ function renderHistoryResults() {
         <h3>${escapeHtml(item.verdict)} - ${formatScore(item.score)}</h3>
         <dl>
           <div>
-            <dt>Input 1</dt>
+            <dt>First Question</dt>
             <dd>${escapeHtml(item.question1)}</dd>
           </div>
           <div>
-            <dt>Input 2</dt>
+            <dt>Second Question</dt>
             <dd>${escapeHtml(item.question2)}</dd>
           </div>
           <div>
-            <dt>Output</dt>
-            <dd>${escapeHtml(item.verdict)} using ${escapeHtml(item.model)}</dd>
+            <dt>Prediction Details</dt>
+            <dd>${escapeHtml(item.verdict)} classified using ${escapeHtml(item.model)}</dd>
           </div>
         </dl>
       </article>
@@ -145,6 +190,7 @@ function loadHistoryItem(id) {
   el("question1").value = item.question1;
   el("question2").value = item.question2;
   renderResult(item);
+  el("comparisonPanelSection").hidden = true; // Clear multi-model comparisons for historical items
   setView("compare");
 }
 
@@ -159,7 +205,7 @@ async function analyze(event) {
   }
 
   setBusy(true);
-  el("message").textContent = "Scoring the question pair.";
+  el("message").textContent = "Scoring the question pair using all models...";
 
   try {
     const data = await getJson("/api/predict", {
@@ -169,11 +215,13 @@ async function analyze(event) {
         question1,
         question2,
         model: el("modelSelect").value,
-        compare: false,
-        include_sbert: false,
+        compare: true,
+        include_sbert: true,
       }),
     });
+    
     renderResult(data.result);
+    renderComparison(data.comparison);
     saveHistory(data.result, question1, question2);
   } catch (error) {
     el("message").textContent = error.message;
@@ -182,27 +230,96 @@ async function analyze(event) {
   }
 }
 
+async function loadMetrics() {
+  const tableBody = el("metricsTableBody");
+  tableBody.innerHTML = `<tr><td colspan="6" class="table-loading">Loading metrics...</td></tr>`;
+  
+  // Update plot image
+  updatePlot();
+
+  try {
+    const data = await getJson("/api/metrics");
+    const modelDisplayNames = {
+      'model1': 'Model 1: TF-IDF Cosine (Calibrated)',
+      'model2': 'Model 2: TF-IDF + Logistic Regression',
+      'model3': 'Model 3: SBERT Cosine (Calibrated)',
+      'model4': 'Model 4: SBERT Supervised Classifier',
+      'model5': 'Model 5: Lexical+Semantic Ensemble'
+    };
+
+    tableBody.innerHTML = data.metrics.map(row => {
+      const modelName = modelDisplayNames[row.ModelKey] || row.ModelKey;
+      const isBest = row.ModelKey === 'model5';
+      const rowClass = isBest ? 'class="best-row"' : '';
+      
+      return `
+        <tr ${rowClass}>
+          <td>${escapeHtml(modelName)} ${isBest ? '★' : ''}</td>
+          <td>${formatScore(row.Accuracy)}</td>
+          <td>${formatScore(row.Precision)}</td>
+          <td>${formatScore(row.Recall)}</td>
+          <td>${formatScore(row.F1)}</td>
+          <td>${formatScore(row["ROC-AUC"])}</td>
+        </tr>
+      `;
+    }).join("");
+  } catch (error) {
+    tableBody.innerHTML = `<tr><td colspan="6" class="table-loading" style="color: var(--danger)">${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+function updatePlot() {
+  const filename = el("plotSelect").value;
+  const plotImg = el("evaluationPlot");
+  const plotFallback = el("plotFallback");
+  
+  plotImg.hidden = false;
+  plotFallback.hidden = true;
+  
+  plotImg.src = `/outputs/${filename}`;
+  plotImg.onerror = () => {
+    plotImg.hidden = true;
+    plotFallback.hidden = false;
+  };
+}
+
 function wireEvents() {
   el("compareForm").addEventListener("submit", analyze);
   el("newBtn").addEventListener("click", resetForm);
   el("historyBtn").addEventListener("click", () => setView("history"));
+  el("metricsBtn").addEventListener("click", () => setView("metrics"));
+  
   el("clearBtn").addEventListener("click", resetForm);
   el("swapBtn").addEventListener("click", () => {
     const q1 = el("question1").value;
     el("question1").value = el("question2").value;
     el("question2").value = q1;
   });
+  
   el("clearHistoryBtn").addEventListener("click", () => {
     state.history = [];
     localStorage.removeItem("qqpHistory");
     renderSidebarHistory();
     renderHistoryResults();
   });
+  
   el("historyList").addEventListener("click", (event) => {
     const button = event.target.closest("[data-history-id]");
     if (button) {
       loadHistoryItem(button.dataset.historyId);
     }
+  });
+
+  el("plotSelect").addEventListener("change", updatePlot);
+
+  // Quick preset click handler
+  document.querySelectorAll(".preset-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      resetResult();
+      el("question1").value = e.target.dataset.q1;
+      el("question2").value = e.target.dataset.q2;
+      el("question1").focus();
+    });
   });
 }
 
